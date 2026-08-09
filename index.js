@@ -1,183 +1,190 @@
-const { default: makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason, fetchLatestBaileysVersion, downloadContentFromMessage } = require('@whiskeysockets/baileys')
+const { default: makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason, fetchLatestBaileysVersion, downloadMediaMessage, getContentType } = require('@whiskeysockets/baileys')
 const qrcode = require('qrcode-terminal')
 const fs = require('fs')
+const fetch = require('node-fetch')
 const pino = require('pino')
 
 const PREFIX = '.'
-const BOTNAME = '𝚖𝚎𝚝𝚊 𝚓𝚎𝚊𝚍𝚢'
-const VERSION = '𝚟3.0.0'
-const OWNER = 'TON_NUMERO@s.whatsapp.net' // MET TON NUM
+const OWNER = '𝐌𝐄𝐓𝐀'
+const BOTNAME = ' *===META JEADY===* '
+const VERSION = ' *v2.6.6* '
+const SIGNATURE = '© 2026 META JEADY'
+const GROQ_KEY = 'COLLE_TA_CLE_ICI'
+const LOGO_PATH = './logo.jpg'
 
-const FILES = { warns: './warns.json', antilink: './antilink.json', whitelist: './whitelist.json', antimot: './antimot.json', welcome: './welcome.json' }
-let DATA = { warns: {}, antilink: {}, whitelist: {}, antimot: {}, welcome: {} }
-for(const k in FILES) if(fs.existsSync(FILES[k])) DATA[k] = JSON.parse(fs.readFileSync(FILES[k]))
-const save = k => fs.writeFileSync(FILES[k], JSON.stringify(DATA[k], null, 2))
+let ANTILINK = {}
+let WARNINGS = {}
+let AUTOAI = {}
+let WELCOME = {}
 
-const containsLink = t => /(https?:\/\/|www\.|wa\.me\/|t\.me\/|[a-z0-9-]+\.(com|net|org))/i.test(t)
-const isWhitelisted = (t,g) => DATA.whitelist[g]?.some(d => t.toLowerCase().includes(d)) || false
-const getText = m => m.conversation || m.extendedTextMessage?.text || m.imageMessage?.caption || m.videoMessage?.caption || ''
-const getAdmin = async (c,g,j) => { try{ return (await c.groupMetadata(g)).participants.find(p=>p.id.split(':')[0]===j.split(':')[0])?.admin }catch{return false} }
+process.on('unhandledRejection', (err) => console.error('Unhandled Rejection:', err))
+
+const getSquichyMenu = () => `╭═══════════════╮
+║ ⚡ ${BOTNAME} ⚡
+║═══════════════║
+║ 👑 *OWNER* : ${OWNER}
+║ 📦 *VERSION* : ${VERSION}
+║ 🔖 *PREFIX* : ${PREFIX}
+║ 🌍 *MODE* : Public
+╰═══════════════╯
+
+╭───「 *🔋ADMIN* GROUPE 」───╮
+│ • ${PREFIX}open → ouvrir le groupe
+│ • ${PREFIX}close → fermer le groupe
+│ • ${PREFIX}kick @tag
+│ • ${PREFIX}tagall
+│ • ${PREFIX}invite
+│ • ${PREFIX}antilink on/off
+│ • ${PREFIX}autoai on/off
+╰────────────────────────╯
+
+╭───「 *⚙️OUTILS* 」───╮
+│ • ${PREFIX}vv
+│ • ${PREFIX}aiimg prompt
+╰─────────────────╯
+
+╭───「 *🤖 IA* 」───╮
+│ • ${PREFIX}ai question
+╰─────────────╯
+
+╭─ ${SIGNATURE} ─╮`
+
+async function sendMenu(conn, from, mek, menuText) {
+    if (fs.existsSync(LOGO_PATH)) {
+        await conn.sendMessage(from, { image: fs.readFileSync(LOGO_PATH), caption: menuText }, { quoted: mek }).catch(() => conn.sendMessage(from, { text: menuText }, { quoted: mek }))
+    } else {
+        await conn.sendMessage(from, { text: menuText }, { quoted: mek })
+    }
+}
+
+async function getAIResponse(text) {
+    try {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: "llama-3.1-8b-instant", messages: [{ role: "system", content: `Tu es ${BOTNAME}.` }, { role: "user", content: text }], max_tokens: 200 })
+        })
+        const data = await res.json()
+        return data.choices?.[0]?.message?.content || "Je n'ai pas de réponse 😅"
+    } catch (e) { return "Erreur API Groq 😅" }
+}
+
+async function generateImage(prompt) {
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&model=flux`
+    const res = await fetch(url)
+    return await res.buffer()
+}
+
+async function isAdmin(conn, from, sender) {
+    try {
+        const meta = await conn.groupMetadata(from)
+        return meta.participants.some(p => p.id === sender && (p.admin === 'admin' || p.admin === 'superadmin'))
+    } catch { return false }
+}
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('./session')
     const { version } = await fetchLatestBaileysVersion()
-    const conn = makeWASocket({ version, auth: state, browser: Browsers.macOS('Desktop'), logger: pino({level: 'silent'}) })
+    const conn = makeWASocket({ version, auth: state, browser: Browsers.windows('Chrome'), printQRInTerminal: true, logger: pino({ level: 'silent' }) })
     conn.ev.on('creds.update', saveCreds)
 
-    conn.ev.on('connection.update', u => {
-        if(u.qr){ console.log('\n📱 SCAN QR :\n'); qrcode.generate(u.qr, {small: true}) }
-        if(u.connection === 'open') console.log(`🤖 ${BOTNAME} | ${VERSION} | 🟢 CONNECTÉ`)
-        if(u.connection === 'close' && u.lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut) startBot()
-    })
-
-    // WELCOME
-    conn.ev.on('group-participants.update', async ({id, participants, action}) => {
-        if(!DATA.welcome[id]?.enabled) return
-        for(const user of participants){
-            const msg = action === 'add'? DATA.welcome[id].welcome : DATA.welcome[id].goodbye
-            if(msg) await conn.sendMessage(id, {text: msg.replace('@user', '@'+user.split('@')[0]), mentions: [user]})
+    conn.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect, qr } = update
+        if (qr) qrcode.generate(qr, { small: true })
+        if (connection === 'open') console.log(`✅ ${BOTNAME} ${VERSION} CONNECTÉ`)
+        if (connection === 'close') {
+            if (lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut) setTimeout(startBot, 3000)
         }
     })
 
-    conn.ev.on('messages.upsert', async ({ messages }) => {
-        const mek = messages?.[0]
-        if(!mek?.message || mek.key.fromMe) return
+    conn.ev.on('messages.upsert', async (m) => {
+        if (!m.messages?.[0]?.message) return
+        const mek = m.messages[0]
         const from = mek.key.remoteJid
         const sender = mek.key.participant || mek.key.remoteJid
         const isGroup = from.endsWith('@g.us')
-        const body = getText(mek.message).trim()
-        const reply = (text, mentions=[]) => conn.sendMessage(from, {text, mentions}, {quoted: mek})
+        const body = mek.message.conversation || mek.message.extendedTextMessage?.text || ''
+        const isCmd = body.startsWith(PREFIX)
+        const command = isCmd? body.slice(PREFIX.length).trim().split(' ')[0].toLowerCase() : ''
+        const q = isCmd? body.slice(PREFIX.length + command.length).trim() : ''
+        const reply = (text, mentions = []) => conn.sendMessage(from, { text, mentions }, { quoted: mek })
 
-        // ANTI-LINK
-        if(isGroup && DATA.antilink[from] && body && containsLink(body) &&!isWhitelisted(body, from)){
-            if(!(await getAdmin(conn, from, conn.user.id))) return reply('❌ Je dois être admin.')
-            if(await getAdmin(conn, from, sender)) return
-            setTimeout(()=>conn.sendMessage(from, {delete: mek.key}), 200)
-            DATA.warns[from] = DATA.warns[from] || {}
-            DATA.warns[from][sender] = (DATA.warns[from][sender] || 0) + 1
-            const warns = DATA.warns[from][sender]; save('warns')
-            if(OWNER) conn.sendMessage(OWNER, {text: `⚠️ [${from.split('@')[0]}] @${sender.split('@')[0]} Warn ${warns}/3`, mentions:[sender]})
-            if(warns >= 3){
-                await conn.groupParticipantsUpdate(from, [sender], 'remove')
-                reply(`🚫 @${sender.split('@')[0]} expulsé. 3/3 warns`, [sender])
-                DATA.warns[from][sender] = 0; save('warns')
-            } else reply(`⚠️ @${sender.split('@')[0]} Lien interdit!\nWarn: ${warns}/3`, [sender])
-            return
+        // ===== AUTO AI CORRIGÉ =====
+        if (isGroup && AUTOAI[from] &&!isCmd && body.length > 2) {
+            await conn.sendPresenceUpdate('composing', from)
+            const aiReply = await getAIResponse(body)
+            await conn.sendMessage(from, { text: aiReply }, { quoted: mek })
         }
 
-        // ANTI-MOT
-        if(isGroup && DATA.antimot[from]?.enabled && body){
-            if(DATA.antimot[from].words.some(w => body.toLowerCase().includes(w.toLowerCase()))){
-                if(!(await getAdmin(conn, from, sender))) setTimeout(()=>conn.sendMessage(from, {delete: mek.key}), 200)
-                return reply(`🚫 @${sender.split('@')[0]} Mot interdit!`, [sender])
-            }
+        // ===== COMMANDES =====
+        if (command === 'open') {
+            if (!isGroup) return reply('❌ Groupe seulement')
+            if (!await isAdmin(conn, from, sender)) return reply('❌ Toi ou le bot n\'êtes pas admin')
+            if (!await isAdmin(conn, from, conn.user.id)) return reply('❌ Le bot doit être admin pour faire ça')
+            try {
+                await conn.groupSettingsUpdate(from, 'not_announcement')
+                reply('✅ GROUPE OUVERT 🟢\nTout le monde peut parler')
+            } catch (e) { reply('❌ Erreur: ' + e.message) }
         }
-
-        // COMMANDES
-        if(!body.startsWith(PREFIX)) return
-        const [command,...args] = body.slice(1).split(' ')
-        const q = args.join(' ')
-        const isAdmin = isGroup? await getAdmin(conn, from, sender) : false
-        const mentioned = mek.message.extendedTextMessage?.contextInfo?.mentionedJid || []
-
-        // ANTILINK
-        if(command === 'antilink'){
-            if(!isAdmin) return reply('❌ Admin seulement')
-            DATA.antilink[from] = q === 'on'; save('antilink')
-            return reply(q === 'on'? '✅ ANTILINK Activé' : '🔴 ANTILINK Désactivé')
+        else if (command === 'close') {
+            if (!isGroup) return reply('❌ Groupe seulement')
+            if (!await isAdmin(conn, from, sender)) return reply('❌ Toi ou le bot n\'êtes pas admin')
+            if (!await isAdmin(conn, from, conn.user.id)) return reply('❌ Le bot doit être admin pour faire ça')
+            try {
+                await conn.groupSettingsUpdate(from, 'announcement')
+                reply('🔒 GROUPE FERMÉ 🔴\nSeuls les admins peuvent parler')
+            } catch (e) { reply('❌ Erreur: ' + e.message) }
         }
-
-        // WHITELIST
-        if(command === 'whitelist'){
-            if(!isAdmin) return reply('❌ Admin seulement')
-            DATA.whitelist[from] = DATA.whitelist[from] || []
-            if(args[0] === 'add'){ DATA.whitelist[from].push(args[1]); save('whitelist'); return reply(`✅ ${args[1]} ajouté`) }
-            if(args[0] === 'del'){ DATA.whitelist[from] = DATA.whitelist[from].filter(d => d!== args[1]); save('whitelist'); return reply(`✅ ${args[1]} supprimé`) }
-            return reply(`📋 Whitelist:\n${DATA.whitelist[from].join('\n') || 'Vide'}`)
+        else if (command === 'autoai') {
+            if (!isGroup) return reply('❌ Groupe seulement')
+            if (!await isAdmin(conn, from, sender)) return reply('❌ Admin seulement')
+            AUTOAI[from] = q === 'on'
+            reply(`✅ AutoAI : ${q === 'on'? 'ON 🟢 Le bot va répondre à tout' : 'OFF 🔴'}`)
         }
-
-        // ANTIMOT
-        if(command === 'antimot'){
-            if(!isAdmin) return reply('❌ Admin seulement')
-            DATA.antimot[from] = DATA.antimot[from] || {enabled: false, words: []}
-            if(args[0] === 'on'){ DATA.antimot[from].enabled = true; save('antimot'); return reply('✅ ANTIMOT Activé') }
-            if(args[0] === 'off'){ DATA.antimot[from].enabled = false; save('antimot'); return reply('🔴 ANTIMOT Désactivé') }
-            if(args[0] === 'add'){ DATA.antimot[from].words.push(args[1]); save('antimot'); return reply(`✅ Mot "${args[1]}" ajouté`) }
-            return reply(`📋 Mots: ${DATA.antimot[from].words.join(', ') || 'Vide'}`)
-        }
-
-        // WELCOME
-        if(command === 'welcome'){
-            if(!isAdmin) return reply('❌ Admin seulement')
-            DATA.welcome[from] = DATA.welcome[from] || {enabled: false, welcome: 'Bienvenue @user', goodbye: '@user est parti'}
-            if(args[0] === 'on'){ DATA.welcome[from].enabled = true; save('welcome'); return reply('✅ WELCOME Activé') }
-            if(args[0] === 'off'){ DATA.welcome[from].enabled = false; save('welcome'); return reply('🔴 WELCOME Désactivé') }
-            if(args[0] === 'set'){ DATA.welcome[from].welcome = q.replace('set ',''); save('welcome'); return reply('✅ Welcome défini') }
-            if(args[0] === 'goodbye'){ DATA.welcome[from].goodbye = q.replace('goodbye ',''); save('welcome'); return reply('✅ Goodbye défini') }
-        }
-
-        // TAGALL
-        if(command === 'tagall'){
-            if(!isAdmin) return reply('❌ Admin seulement')
-            const metadata = await conn.groupMetadata(from)
-            const participants = metadata.participants.map(p => p.id)
-            let text = `📢 *TAGALL* \n\n${q || 'Attention tout le monde'}\n\n`
-            participants.forEach(p => text += `• @${p.split('@')[0]}\n`)
-            return conn.sendMessage(from, {text, mentions: participants})
-        }
-
-        // VV - VOIR VUE UNIQUE
-        if(command === 'vv'){
-            if(!mek.message.extendedTextMessage?.contextInfo?.quotedMessage) return reply('❌ Réponds à une photo/vidéo "vue unique"')
-            const quoted = mek.message.extendedTextMessage.contextInfo.quotedMessage
-            const type = Object.keys(quoted)[0]
-            if(!['imageMessage','videoMessage'].includes(type)) return reply('❌ Ce n\'est pas une image/vidéo')
-            const stream = await downloadContentFromMessage(quoted[type], type === 'imageMessage'? 'image' : 'video')
-            let buffer = Buffer.from([])
-            for await(const chunk of stream) buffer = Buffer.concat([buffer, chunk])
-            await conn.sendMessage(from, { [type === 'imageMessage'? 'image' : 'video']: buffer }, {quoted: mek})
-        }
-
-        // KICK
-        if(command === 'kick'){
-            if(!isAdmin) return reply('❌ Admin seulement')
-            const target = mentioned[0]
-            if(!target) return reply('❌ Mentionne un membre')
-            await conn.groupParticipantsUpdate(from, [target], 'remove')
-            return reply(`🚫 @${target.split('@')[0]} expulsé`, [target])
-        }
-
-        // WARNS
-        if(command === 'warns'){
-            const target = mentioned[0] || sender
-            const warns = DATA.warns[from]?.[target] || 0
-            return reply(`⚠️ @${target.split('@')[0]}: ${warns}/3 warns`, [target])
-        }
-
-        if(command === 'resetwarn'){
-            if(!isAdmin) return reply('❌ Admin seulement')
-            const target = mentioned[0]
-            if(!target) return reply('❌ Mentionne un membre')
-            DATA.warns[from][target] = 0; save('warns')
-            return reply(`✅ Warns de @${target.split('@')[0]} reset`, [target])
-        }
-
-        // MENU
-        if(command === 'menu'){
-            return reply(`╭━━〔 ${BOTNAME} ${VERSION} 〕━━╮
+        else if (command === 'invite') {
+            if (!isGroup) return reply('❌ Groupe seulement')
+            const meta = await conn.groupMetadata(from)
+            const code = await conn.groupInviteCode(from)
+            const link = `https://chat.whatsapp.com/${code}`
+            let text = `╭══════════╮
+┃─────((✧ INVITATION GROUPE ✧))─────
 ┃
-┃ 🔗.antilink on/off
-┃ 📋.whitelist add/del/list
-┃ 🚫.antimot on/off/add/list
-┃ 👋.welcome on/off/set/goodbye
-┃ 📢.tagall [texte]
-┃ 👁️.vv - répond à vue unique
-┃ ⚠️.warns @ |.resetwarn @
-┃ 👢.kick @
-┃ 📜.menu
+┃ ➟ *${meta.subject}*
+┃ ➟ Membres: ${meta.participants.length}
 ┃
-╰━━━━━━━━━━╯`)
+┃ 📢 AIDEZ-NOUS À GRANDIR!
+┃ Partagez ce lien avec vos amis 👇
+┃
+┃ ${link}
+╰══════════╯`
+            await conn.sendMessage(from, { text }, { quoted: mek })
+        }
+        else if (command === 'aiimg') {
+            if (!q) return reply(`Exemple : ${PREFIX}aiimg un lion`)
+            reply(`🎨 Génération...`)
+            const imgBuffer = await generateImage(q)
+            await conn.sendMessage(from, { image: imgBuffer, caption: `Prompt: ${q}` }, { quoted: mek })
+        }
+        else if (command === 'tagall') {
+            if (!isGroup) return reply('❌ Groupe seulement')
+            const meta = await conn.groupMetadata(from)
+            const members = meta.participants.map(p => p.id)
+            let text = `╭───「 📎TAG ALL 」───╮\n│ GROUPE : ${meta.subject}\n│ TOTAL : ${members.length}\n╰─────────────────╯\n\n`
+            for(let mem of members){ text += `➥ @${mem.split('@')[0]}\n` }
+            await conn.sendMessage(from, { text, mentions: members }, { quoted: mek })
+        }
+        else if (command === 'bot-menu' || command === 'menu') await sendMenu(conn, from, mek, getSquichyMenu())
+        else if (command === 'ping') {
+            const start = Date.now()
+            const msg = await reply('🏓 Pong...')
+            await conn.sendMessage(from, { text: `🏓 Pong! ${Date.now() - start}ms`, edit: msg.key })
+        }
+        else if (command === 'ai') {
+            if (!q) return reply(`Usage : ${PREFIX}ai ta question`)
+            const aiReply = await getAIResponse(q)
+            await conn.sendMessage(from, { text: aiReply }, { quoted: mek })
         }
     })
 }
-startBot().catch(console.log)
+
+startBot()
