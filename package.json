@@ -1,16 +1,16 @@
 {
   "name": "mon-bot-13",
-  "version": "1.0.0",
+  "version": "2.8.0",
+  "description": "META JEADY WhatsApp Bot - QR Code + Antilink + Admin tools",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
+  "author": "KČØ4P TECH",
+  "license": "MIT",
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.8",
-    "express": "^4.18.2",
-    "qrcode": "^1.5.3",
-    "qrcode-terminal": "^0.12.0",
-    "node-fetch": "^2.7.0",
-    "pino": "^8.17.0"
+    "@whiskeysockets/baileys": "^6.7.18",
+    "pino": "^8.17.0",
+    "qrcode-terminal": "^0.12.0"
   }
 }
