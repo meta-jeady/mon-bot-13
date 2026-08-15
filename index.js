@@ -1,15 +1,15 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys')
-const pino = require('pino')
 const qrcode = require('qrcode-terminal')
+const pino = require('pino')
 const fs = require('fs')
 
 const PREFIX = '.'
 const OWNER = 'KČØ4P'
 const BOTNAME = 'META JEADY'
 const VERSION = 'v2.6.4'
-const SIGNATURE = '> BY : © 2026 KČØ4P TECH'
+const SIGNATURE = '> BY : _© 2026 KČØ4P TECH_'
 
-const LOGO_PATH = './logo.jpg'
+const LOGO_PATH = './logo.jpg' 
 const PING_BANNIERE = 'https://i.ibb.co/0yXk3vL/ping-banner.jpg'
 
 const format = (text) => '> ' + text.split('\n').join('\n> ')
@@ -24,7 +24,7 @@ const getMenu = () => format(`╭═══════════════�
 ┃ ➟ DATE: ${new Date().toLocaleDateString('fr-FR')}
 ┃ ➟ MODE: 🌍 Public
 ┃
-╰══════════════════╯
+╰══════════╯
 
 ╭──((✧ SYSTEME ✧))──╮
 ┃ ➟ ${PREFIX}menu
@@ -57,7 +57,12 @@ async function startBot() {
     conn.ev.on('creds.update', saveCreds)
 
     conn.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect } = update
+        const { connection, lastDisconnect, qr } = update
+        
+        if(qr) {
+            console.log('\n====== SCANNE CE QR AVEC WHATSAPP ======\n')
+            qrcode.generate(qr, { small: true })
+        }
 
         if (connection === 'open') {
             console.log(`\n✅ ${BOTNAME} CONNECTÉ AVEC SUCCES ✅\n`)
@@ -88,12 +93,14 @@ async function startBot() {
                 reply('❌ logo.jpg introuvable. Mets le dans le dossier du bot')
             }
         }
+
         else if (command === 'ping') {
             const start = Date.now()
             await conn.sendMessage(from, { image: { url: PING_BANNIERE }, caption: format('🏓 Test...') }, { quoted: mek })
             const end = Date.now()
             await conn.sendMessage(from, { text: format(`🏓 Pong! ${end - start}ms\nBot: En ligne ✅`) }, { quoted: mek })
         }
+
         else if (command === 'info') {
             if (fs.existsSync(LOGO_PATH)) {
                 await conn.sendMessage(from, { image: fs.readFileSync(LOGO_PATH), caption: format(`*${BOTNAME} ${VERSION}*\nCréé par ${OWNER}\n24/24 Online\n${SIGNATURE}`) }, { quoted: mek })
@@ -101,25 +108,30 @@ async function startBot() {
                 reply(`*${BOTNAME} ${VERSION}*\nCréé par ${OWNER}\n${SIGNATURE}`)
             }
         }
+
         else if (command === 'welcome') {
             if (q === 'on') reply('✅ WELCOME ACTIVÉ')
             else if (q === 'off') reply('❌ WELCOME DÉSACTIVÉ')
             else reply(`Usage : ${PREFIX}welcome on/off`)
         }
+
         else if (command === 'open') {
             await conn.groupSettingUpdate(from, 'not_announcement')
             reply('✅ GROUPE OUVERT')
         }
+
         else if (command === 'close') {
             await conn.groupSettingUpdate(from, 'announcement')
             reply('🔒 GROUPE FERMÉ')
         }
+
         else if (command === 'kick') {
             const mentioned = mek.message.extendedTextMessage?.contextInfo?.mentionedJid || []
             if (mentioned.length === 0) return reply(`Usage : ${PREFIX}kick @membre`)
             await conn.groupParticipantsUpdate(from, mentioned, "remove")
             reply('✅ Membre expulsé')
         }
+
         else if (command === 'tagall') {
             const meta = await conn.groupMetadata(from)
             const members = meta.participants.map(p => p.id)
