@@ -1,24 +1,20 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, delay } = require('@whiskeysockets/baileys')
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys')
 const pino = require('pino')
 const qrcode = require('qrcode-terminal')
 const fs = require('fs')
-const readline = require('readline')
-
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
 
 const PREFIX = '.'
 const OWNER = 'KČØ4P'
 const BOTNAME = 'META JEADY'
 const VERSION = 'v2.6.4'
-const SIGNATURE = '> BY : _© 2026 KČØ4P TECH_'
+const SIGNATURE = '> BY : © 2026 KČØ4P TECH'
 
 const LOGO_PATH = './logo.jpg'
 const PING_BANNIERE = 'https://i.ibb.co/0yXk3vL/ping-banner.jpg'
 
 const format = (text) => '> ' + text.split('\n').join('\n> ')
-const question = (text) => new Promise((resolve) => rl.question(text, resolve))
 
-const getMenu = () => format(`╭══════════╮
+const getMenu = () => format(`╭══════════════════╮
 ┃─────((✧ ${BOTNAME} ✧))─────
 ┃
 ┃ ➟ OWNER: ${OWNER}
@@ -28,7 +24,7 @@ const getMenu = () => format(`╭══════════╮
 ┃ ➟ DATE: ${new Date().toLocaleDateString('fr-FR')}
 ┃ ➟ MODE: 🌍 Public
 ┃
-╰══════════╯
+╰══════════════════╯
 
 ╭──((✧ SYSTEME ✧))──╮
 ┃ ➟ ${PREFIX}menu
@@ -53,43 +49,22 @@ async function startBot() {
     const conn = makeWASocket({
         version,
         auth: state,
-        printQRInTerminal: false,
-        browser: ['Ubuntu', 'Chrome', '120.0.0'],
+        printQRInTerminal: true, // ✅ QR ACTIVÉ
+        browser: ['Ubuntu', 'Chrome', '120.0.0'], // Anti-ban
         logger: pino({ level: 'warn' })
     })
-
-    // PAIRING CODE : DEMANDE LE NUMERO A CELUI QUI LANCE
-    if (!conn.authState.creds.registered) {
-        console.log(`\n====== ${BOTNAME} CONNEXION ======`)
-        const phoneNumber = await question('Entre le numéro WhatsApp à connecter avec indicatif: \nEx: +2376XXXXXXXX \n> ')
-        rl.close() // ferme la saisie
-        
-        const num = phoneNumber.replace(/[^0-9]/g, '') // garde que les chiffres
-        await delay(2000)
-        let code = await conn.requestPairingCode(num)
-        console.log(`\n========== CODE DE PAIRE: ${code} ==========\n`)
-        console.log('1. Ouvre WhatsApp sur le numéro ci-dessus')
-        console.log('2. 3 points > Appareils connectés > Lier un appareil')
-        console.log('3. "Lier avec un code" et tape le code\n')
-    }
 
     conn.ev.on('creds.update', saveCreds)
 
     conn.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update
-        
-        if(qr) {
-            console.log('\nOU SCANNE CE QR:\n')
-            qrcode.generate(qr, { small: true })
-        }
+        const { connection, lastDisconnect } = update
 
         if (connection === 'open') {
-            console.log(`✅ ${BOTNAME} CONNECTÉ`)
-            rl.close()
+            console.log(`\n✅ ${BOTNAME} CONNECTÉ AVEC SUCCES ✅\n`)
         }
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut
-            console.log('Déconnecté. Reconnexion:', shouldReconnect)
+            console.log('Déconnecté. Reconnexion...')
             if (shouldReconnect) startBot()
         }
     })
