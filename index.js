@@ -7,38 +7,41 @@ const PREFIX = '.'
 const OWNER = 'KČØ4P'
 const BOTNAME = 'META JEADY'
 const VERSION = 'v2.6.4'
-const SIGNATURE = '> BY : _© 2026 KČØ4P TECH_'
+const SIGNATURE = '> BY : © 2026 KČØ4P TECH'
 
-const LOGO_PATH = './logo.jpg' 
+const LOGO_PATH = './logo.jpg'
 const PING_BANNIERE = 'https://i.ibb.co/0yXk3vL/ping-banner.jpg'
+
+// ANTILINK
+let antiLink = {} // { 'groupjid': true }
 
 const format = (text) => '> ' + text.split('\n').join('\n> ')
 
-const getMenu = () => format(`╭══════════════════╮
-┃─────((✧ ${BOTNAME} ✧))─────
-┃
-┃ ➟ OWNER: ${OWNER}
-┃ ➟ VERSION: ${VERSION}
-┃ ➟ PREFIX: ${PREFIX}
-┃ ➟ COMMAND: 10
-┃ ➟ DATE: ${new Date().toLocaleDateString('fr-FR')}
-┃ ➟ MODE: 🌍 Public
-┃
-╰══════════╯
+const getMenu = () => format(`> ╭─❒ 「 META JEADY 」 ❒
+> │
+> │  👑 OWNER : KČØ4P
+> │  📦 VERSION : v2.6.4
+> │  ⚡ PREFIX : .
+> │  📊 COMMANDES : 11
+> │  🌍 MODE : Public
+> │  📅 DATE : 15/08/2026
+> │
+> ╰──────────────❒
 
-╭──((✧ SYSTEME ✧))──╮
-┃ ➟ ${PREFIX}menu
-┃ ➟ ${PREFIX}ping
-┃ ➟ ${PREFIX}info
-╰───────────────────╯
+> ╭─❒ 「 SYSTEME 」 ❒
+> │ ➟ .menu
+> │ ➟ .ping
+> │ ➟ .info
+> ╰──────────────❒
 
-╭──((✧ ADMIN ✧))──╮
-┃ ➟ ${PREFIX}open
-┃ ➟ ${PREFIX}close
-┃ ➟ ${PREFIX}kick @tag
-┃ ➟ ${PREFIX}tagall
-┃ ➟ ${PREFIX}welcome on/off
-╰──────────────────╯
+> ╭─❒ 「 ADMIN GROUPE 」 ❒
+> │ ➟ .open        _ouvrir le groupe_
+> │ ➟ .close       _fermer le groupe_
+> │ ➟ .kick @tag   _expulser un membre_
+> │ ➟ .tagall      _taguer tout le monde_
+> │ ➟ .welcome on/off _msg bienvenue_
+> │ ➟ .antilink on/off _anti lien wa_
+> ╰──────────────❒
 
 ${SIGNATURE}`)
 
@@ -58,7 +61,7 @@ async function startBot() {
 
     conn.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update
-        
+
         if(qr) {
             console.log('\n====== SCANNE CE QR AVEC WHATSAPP ======\n')
             qrcode.generate(qr, { small: true })
@@ -79,6 +82,26 @@ async function startBot() {
         const mek = messages[0]
         const from = mek.key.remoteJid
         const body = mek.message?.conversation || mek.message?.extendedTextMessage?.text || ''
+        const isGroup = from.endsWith('@g.us')
+        const sender = mek.key.participant || mek.key.remoteJid
+
+        // ===== ANTILINK =====
+        if(isGroup && antiLink[from]) {
+            const linkRegex = /chat.whatsapp.com\/([0-9A-Za-z]{20,24})/i
+            if(linkRegex.test(body)) {
+                const groupMeta = await conn.groupMetadata(from)
+                const botId = conn.user.id.split(':')[0] + '@s.whatsapp.net'
+                const isBotAdmin = groupMeta.participants.find(p => p.id === botId)?.admin
+                const isSenderAdmin = groupMeta.participants.find(p => p.id === sender)?.admin
+
+                if(isBotAdmin &&!isSenderAdmin) {
+                    await conn.sendMessage(from, { delete: mek.key })
+                    await conn.groupParticipantsUpdate(from, [sender], "remove")
+                    await conn.sendMessage(from, { text: format(`❌ Lien détecté! @${sender.split('@')[0]} a été expulsé`), mentions: [sender] })
+                    return
+                }
+            }
+        }
 
         if (!body.startsWith(PREFIX)) return
 
@@ -113,6 +136,23 @@ async function startBot() {
             if (q === 'on') reply('✅ WELCOME ACTIVÉ')
             else if (q === 'off') reply('❌ WELCOME DÉSACTIVÉ')
             else reply(`Usage : ${PREFIX}welcome on/off`)
+        }
+
+        else if (command === 'antilink') {
+            if(!isGroup) return reply('❌ Commande groupe seulement')
+            const groupMeta = await conn.groupMetadata(from)
+            const isSenderAdmin = groupMeta.participants.find(p => p.id === sender)?.admin
+            if(!isSenderAdmin) return reply('❌ Admin seulement')
+
+            if (q === 'on') {
+                antiLink[from] = true
+                reply('✅ ANTILINK ACTIVÉ\nTout lien whatsapp sera supprimé + kick')
+            }
+            else if (q === 'off') {
+                delete antiLink[from]
+                reply('❌ ANTILINK DÉSACTIVÉ')
+            }
+            else reply(`Usage : ${PREFIX}antilink on/off`)
         }
 
         else if (command === 'open') {
