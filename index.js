@@ -1,21 +1,24 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, delay } = require('@whiskeysockets/baileys') // ✅ SANS VERSION
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, delay } = require('@whiskeysockets/baileys')
 const pino = require('pino')
 const qrcode = require('qrcode-terminal')
 const fs = require('fs')
+const readline = require('readline')
+
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
 
 const PREFIX = '.'
 const OWNER = 'KČØ4P'
 const BOTNAME = 'META JEADY'
 const VERSION = 'v2.6.4'
 const SIGNATURE = '> BY : _© 2026 KČØ4P TECH_'
-const NUMERO_OWNER = '237687960259'
 
 const LOGO_PATH = './logo.jpg'
 const PING_BANNIERE = 'https://i.ibb.co/0yXk3vL/ping-banner.jpg'
 
 const format = (text) => '> ' + text.split('\n').join('\n> ')
+const question = (text) => new Promise((resolve) => rl.question(text, resolve))
 
-const getMenu = () => format(`╭══════════════════╮
+const getMenu = () => format(`╭══════════╮
 ┃─────((✧ ${BOTNAME} ✧))─────
 ┃
 ┃ ➟ OWNER: ${OWNER}
@@ -25,7 +28,7 @@ const getMenu = () => format(`╭═══════════════�
 ┃ ➟ DATE: ${new Date().toLocaleDateString('fr-FR')}
 ┃ ➟ MODE: 🌍 Public
 ┃
-╰══════════════════╯
+╰══════════╯
 
 ╭──((✧ SYSTEME ✧))──╮
 ┃ ➟ ${PREFIX}menu
@@ -51,16 +54,23 @@ async function startBot() {
         version,
         auth: state,
         printQRInTerminal: false,
-        browser: ['Ubuntu', 'Chrome', '120.0.0'], // Anti-ban
+        browser: ['Ubuntu', 'Chrome', '120.0.0'],
         logger: pino({ level: 'warn' })
     })
 
-    // PAIRING CODE si pas connecté
+    // PAIRING CODE : DEMANDE LE NUMERO A CELUI QUI LANCE
     if (!conn.authState.creds.registered) {
-        await delay(3000)
-        let code = await conn.requestPairingCode(NUMERO_OWNER)
+        console.log(`\n====== ${BOTNAME} CONNEXION ======`)
+        const phoneNumber = await question('Entre le numéro WhatsApp à connecter avec indicatif: \nEx: +2376XXXXXXXX \n> ')
+        rl.close() // ferme la saisie
+        
+        const num = phoneNumber.replace(/[^0-9]/g, '') // garde que les chiffres
+        await delay(2000)
+        let code = await conn.requestPairingCode(num)
         console.log(`\n========== CODE DE PAIRE: ${code} ==========\n`)
-        console.log('Tape ce code dans WhatsApp > Appareils connectés > Lier un appareil')
+        console.log('1. Ouvre WhatsApp sur le numéro ci-dessus')
+        console.log('2. 3 points > Appareils connectés > Lier un appareil')
+        console.log('3. "Lier avec un code" et tape le code\n')
     }
 
     conn.ev.on('creds.update', saveCreds)
@@ -68,12 +78,15 @@ async function startBot() {
     conn.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update
         
-        if(qr) { // Affiche aussi le QR au cas où
+        if(qr) {
             console.log('\nOU SCANNE CE QR:\n')
             qrcode.generate(qr, { small: true })
         }
 
-        if (connection === 'open') console.log(`✅ ${BOTNAME} CONNECTÉ`)
+        if (connection === 'open') {
+            console.log(`✅ ${BOTNAME} CONNECTÉ`)
+            rl.close()
+        }
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut
             console.log('Déconnecté. Reconnexion:', shouldReconnect)
@@ -91,7 +104,6 @@ async function startBot() {
 
         const command = body.slice(1).trim().split(' ')[0].toLowerCase()
         const q = body.slice(1 + command.length).trim()
-
         const reply = (text) => conn.sendMessage(from, { text: format(text) }, { quoted: mek })
 
         if (command === 'menu') {
@@ -101,14 +113,12 @@ async function startBot() {
                 reply('❌ logo.jpg introuvable. Mets le dans le dossier du bot')
             }
         }
-
         else if (command === 'ping') {
             const start = Date.now()
             await conn.sendMessage(from, { image: { url: PING_BANNIERE }, caption: format('🏓 Test...') }, { quoted: mek })
             const end = Date.now()
             await conn.sendMessage(from, { text: format(`🏓 Pong! ${end - start}ms\nBot: En ligne ✅`) }, { quoted: mek })
         }
-
         else if (command === 'info') {
             if (fs.existsSync(LOGO_PATH)) {
                 await conn.sendMessage(from, { image: fs.readFileSync(LOGO_PATH), caption: format(`*${BOTNAME} ${VERSION}*\nCréé par ${OWNER}\n24/24 Online\n${SIGNATURE}`) }, { quoted: mek })
@@ -116,30 +126,25 @@ async function startBot() {
                 reply(`*${BOTNAME} ${VERSION}*\nCréé par ${OWNER}\n${SIGNATURE}`)
             }
         }
-
         else if (command === 'welcome') {
             if (q === 'on') reply('✅ WELCOME ACTIVÉ')
             else if (q === 'off') reply('❌ WELCOME DÉSACTIVÉ')
             else reply(`Usage : ${PREFIX}welcome on/off`)
         }
-
         else if (command === 'open') {
             await conn.groupSettingUpdate(from, 'not_announcement')
             reply('✅ GROUPE OUVERT')
         }
-
         else if (command === 'close') {
             await conn.groupSettingUpdate(from, 'announcement')
             reply('🔒 GROUPE FERMÉ')
         }
-
         else if (command === 'kick') {
             const mentioned = mek.message.extendedTextMessage?.contextInfo?.mentionedJid || []
             if (mentioned.length === 0) return reply(`Usage : ${PREFIX}kick @membre`)
             await conn.groupParticipantsUpdate(from, mentioned, "remove")
             reply('✅ Membre expulsé')
         }
-
         else if (command === 'tagall') {
             const meta = await conn.groupMetadata(from)
             const members = meta.participants.map(p => p.id)
