@@ -7,7 +7,7 @@ const PREFIX = '.'
 const OWNER = 'KČØ4P'
 const BOTNAME = 'META JEADY'
 const VERSION = 'v2.6.4'
-const SIGNATURE = '> BY : _© 2026 KČØ4P TECH_'
+const SIGNATURE = '> BY : © 2026 KČØ4P TECH SERF'
 
 const LOGO_PATH = './logo.jpg'
 const PING_BANNIERE = 'https://i.imgur.com/8KmE1wD.jpg'
