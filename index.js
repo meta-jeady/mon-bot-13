@@ -1,4 +1,4 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys')
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, delay } = require('@whiskeysockets/baileys')
 const qrcode = require('qrcode-terminal')
 const pino = require('pino')
 const fs = require('fs')
@@ -7,41 +7,41 @@ const PREFIX = '.'
 const OWNER = 'KČØ4P'
 const BOTNAME = 'META JEADY'
 const VERSION = 'v2.6.4'
-const SIGNATURE = '> BY : © 2026 KČØ4P TECH'
+const SIGNATURE = '> BY : _© 2026 KČØ4P TECH_'
 
 const LOGO_PATH = './logo.jpg'
-const PING_BANNIERE = 'https://i.ibb.co/0yXk3vL/ping-banner.jpg'
+const PING_BANNIERE = 'https://i.imgur.com/8KmE1wD.jpg'
 
-// ANTILINK
-let antiLink = {} // { 'groupjid': true }
+// ===== ANTILINK SYSTEM =====
+let antiLink = {} // stocke les groupes avec antilink on
 
 const format = (text) => '> ' + text.split('\n').join('\n> ')
 
-const getMenu = () => format(`> ╭─❒ 「 META JEADY 」 ❒
-> │
-> │  👑 OWNER : KČØ4P
-> │  📦 VERSION : v2.6.4
-> │  ⚡ PREFIX : .
-> │  📊 COMMANDES : 11
-> │  🌍 MODE : Public
-> │  📅 DATE : 15/08/2026
-> │
-> ╰──────────────❒
+const getMenu = () => format(`╭─❒ 「 ${BOTNAME} 」 ❒
+│
+│ 👑 OWNER : ${OWNER}
+│ 📦 VERSION : ${VERSION}
+│ ⚡ PREFIX : ${PREFIX}
+│ 📊 COMMANDES : 11
+│ 🌍 MODE : Public
+│ 📅 DATE : ${new Date().toLocaleDateString('fr-FR')}
+│
+╰──────────────❒
 
-> ╭─❒ 「 SYSTEME 」 ❒
-> │ ➟ .menu
-> │ ➟ .ping
-> │ ➟ .info
-> ╰──────────────❒
+╭─❒ 「 SYSTEME 」 ❒
+│ ➟ ${PREFIX}menu
+│ ➟ ${PREFIX}ping
+│ ➟ ${PREFIX}info
+╰──────────────❒
 
-> ╭─❒ 「 ADMIN GROUPE 」 ❒
-> │ ➟ .open        _ouvrir le groupe_
-> │ ➟ .close       _fermer le groupe_
-> │ ➟ .kick @tag   _expulser un membre_
-> │ ➟ .tagall      _taguer tout le monde_
-> │ ➟ .welcome on/off _msg bienvenue_
-> │ ➟ .antilink on/off _anti lien wa_
-> ╰──────────────❒
+╭─❒ 「 ADMIN GROUPE 」 ❒
+│ ➟ ${PREFIX}open _ouvrir le groupe_
+│ ➟ ${PREFIX}close _fermer le groupe_
+│ ➟ ${PREFIX}kick @tag _expulser un membre_
+│ ➟ ${PREFIX}tagall _taguer tout le monde_
+│ ➟ ${PREFIX}welcome on/off _msg bienvenue_
+│ ➟ ${PREFIX}antilink on/off _anti lien wa_
+╰──────────────❒
 
 ${SIGNATURE}`)
 
@@ -52,9 +52,9 @@ async function startBot() {
     const conn = makeWASocket({
         version,
         auth: state,
-        printQRInTerminal: true, // ✅ QR ACTIVÉ
-        browser: ['Ubuntu', 'Chrome', '120.0.0'], // Anti-ban
-        logger: pino({ level: 'warn' })
+        printQRInTerminal: true,
+        browser: ['Ubuntu', 'Chrome', '120.0.0'],
+        logger: pino({ level: 'fatal' })
     })
 
     conn.ev.on('creds.update', saveCreds)
@@ -67,9 +67,7 @@ async function startBot() {
             qrcode.generate(qr, { small: true })
         }
 
-        if (connection === 'open') {
-            console.log(`\n✅ ${BOTNAME} CONNECTÉ AVEC SUCCES ✅\n`)
-        }
+        if (connection === 'open') console.log(`\n✅ ${BOTNAME} CONNECTÉ AVEC SUCCES ✅\n`)
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut
             console.log('Déconnecté. Reconnexion...')
@@ -85,21 +83,23 @@ async function startBot() {
         const isGroup = from.endsWith('@g.us')
         const sender = mek.key.participant || mek.key.remoteJid
 
-        // ===== ANTILINK =====
+        // ===== ANTILINK CHECK =====
         if(isGroup && antiLink[from]) {
             const linkRegex = /chat.whatsapp.com\/([0-9A-Za-z]{20,24})/i
             if(linkRegex.test(body)) {
-                const groupMeta = await conn.groupMetadata(from)
-                const botId = conn.user.id.split(':')[0] + '@s.whatsapp.net'
-                const isBotAdmin = groupMeta.participants.find(p => p.id === botId)?.admin
-                const isSenderAdmin = groupMeta.participants.find(p => p.id === sender)?.admin
+                try {
+                    const groupMeta = await conn.groupMetadata(from)
+                    const botId = conn.user.id.split(':')[0] + '@s.whatsapp.net'
+                    const isBotAdmin = groupMeta.participants.find(p => p.id === botId)?.admin
+                    const isSenderAdmin = groupMeta.participants.find(p => p.id === sender)?.admin
 
-                if(isBotAdmin &&!isSenderAdmin) {
-                    await conn.sendMessage(from, { delete: mek.key })
-                    await conn.groupParticipantsUpdate(from, [sender], "remove")
-                    await conn.sendMessage(from, { text: format(`❌ Lien détecté! @${sender.split('@')[0]} a été expulsé`), mentions: [sender] })
-                    return
-                }
+                    if(isBotAdmin &&!isSenderAdmin) {
+                        await conn.sendMessage(from, { delete: mek.key })
+                        await conn.groupParticipantsUpdate(from, [sender], "remove")
+                        await conn.sendMessage(from, { text: format(`❌ Lien WhatsApp détecté!\n@${sender.split('@')[0]} a été expulsé`), mentions: [sender] })
+                        return
+                    }
+                } catch(e) { console.log(e) }
             }
         }
 
@@ -113,15 +113,19 @@ async function startBot() {
             if (fs.existsSync(LOGO_PATH)) {
                 await conn.sendMessage(from, { image: fs.readFileSync(LOGO_PATH), caption: getMenu() }, { quoted: mek })
             } else {
-                reply('❌ logo.jpg introuvable. Mets le dans le dossier du bot')
+                reply(getMenu())
             }
         }
 
         else if (command === 'ping') {
             const start = Date.now()
-            await conn.sendMessage(from, { image: { url: PING_BANNIERE }, caption: format('🏓 Test...') }, { quoted: mek })
+            await delay(100)
             const end = Date.now()
-            await conn.sendMessage(from, { text: format(`🏓 Pong! ${end - start}ms\nBot: En ligne ✅`) }, { quoted: mek })
+            try {
+                await conn.sendMessage(from, { image: { url: PING_BANNIERE }, caption: format(`🏓 Pong! ${end - start}ms`) }, { quoted: mek })
+            } catch {
+                reply(`🏓 Pong! ${end - start}ms\n✅ ${BOTNAME} est en ligne`)
+            }
         }
 
         else if (command === 'info') {
@@ -132,12 +136,6 @@ async function startBot() {
             }
         }
 
-        else if (command === 'welcome') {
-            if (q === 'on') reply('✅ WELCOME ACTIVÉ')
-            else if (q === 'off') reply('❌ WELCOME DÉSACTIVÉ')
-            else reply(`Usage : ${PREFIX}welcome on/off`)
-        }
-
         else if (command === 'antilink') {
             if(!isGroup) return reply('❌ Commande groupe seulement')
             const groupMeta = await conn.groupMetadata(from)
@@ -146,13 +144,19 @@ async function startBot() {
 
             if (q === 'on') {
                 antiLink[from] = true
-                reply('✅ ANTILINK ACTIVÉ\nTout lien whatsapp sera supprimé + kick')
+                reply('✅ ANTILINK ACTIVÉ\nLes liens whatsapp sont interdits. Kick auto.')
             }
             else if (q === 'off') {
                 delete antiLink[from]
                 reply('❌ ANTILINK DÉSACTIVÉ')
             }
             else reply(`Usage : ${PREFIX}antilink on/off`)
+        }
+
+        else if (command === 'welcome') {
+            if (q === 'on') reply('✅ WELCOME ACTIVÉ')
+            else if (q === 'off') reply('❌ WELCOME DÉSACTIVÉ')
+            else reply(`Usage : ${PREFIX}welcome on/off`)
         }
 
         else if (command === 'open') {
