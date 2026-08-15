@@ -1,4 +1,6 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, delay } = require('@whiskeysockets/baileys@6.7.15')
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, delay } = require('@whiskeysockets/baileys') // ✅ SANS VERSION
+const pino = require('pino')
+const qrcode = require('qrcode-terminal')
 const fs = require('fs')
 
 const PREFIX = '.'
@@ -8,8 +10,8 @@ const VERSION = 'v2.6.4'
 const SIGNATURE = '> BY : _© 2026 KČØ4P TECH_'
 const NUMERO_OWNER = '237687960259'
 
-const LOGO_PATH = './logo.jpg' // Ton logo dans le dossier
-const PING_BANNIERE = 'https://i.ibb.co/0yXk3vL/ping-banner.jpg' // Banniere ping en ligne
+const LOGO_PATH = './logo.jpg'
+const PING_BANNIERE = 'https://i.ibb.co/0yXk3vL/ping-banner.jpg'
 
 const format = (text) => '> ' + text.split('\n').join('\n> ')
 
@@ -49,22 +51,32 @@ async function startBot() {
         version,
         auth: state,
         printQRInTerminal: false,
+        browser: ['Ubuntu', 'Chrome', '120.0.0'], // Anti-ban
+        logger: pino({ level: 'warn' })
     })
 
-    // PAIRING CODE
+    // PAIRING CODE si pas connecté
     if (!conn.authState.creds.registered) {
         await delay(3000)
         let code = await conn.requestPairingCode(NUMERO_OWNER)
-        console.log(`\n========== CODE: ${code} ==========\n`)
+        console.log(`\n========== CODE DE PAIRE: ${code} ==========\n`)
+        console.log('Tape ce code dans WhatsApp > Appareils connectés > Lier un appareil')
     }
 
     conn.ev.on('creds.update', saveCreds)
 
     conn.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect } = update
+        const { connection, lastDisconnect, qr } = update
+        
+        if(qr) { // Affiche aussi le QR au cas où
+            console.log('\nOU SCANNE CE QR:\n')
+            qrcode.generate(qr, { small: true })
+        }
+
         if (connection === 'open') console.log(`✅ ${BOTNAME} CONNECTÉ`)
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut
+            console.log('Déconnecté. Reconnexion:', shouldReconnect)
             if (shouldReconnect) startBot()
         }
     })
@@ -84,10 +96,7 @@ async function startBot() {
 
         if (command === 'menu') {
             if (fs.existsSync(LOGO_PATH)) {
-                await conn.sendMessage(from, {
-                    image: fs.readFileSync(LOGO_PATH),
-                    caption: getMenu()
-                }, { quoted: mek })
+                await conn.sendMessage(from, { image: fs.readFileSync(LOGO_PATH), caption: getMenu() }, { quoted: mek })
             } else {
                 reply('❌ logo.jpg introuvable. Mets le dans le dossier du bot')
             }
@@ -102,10 +111,7 @@ async function startBot() {
 
         else if (command === 'info') {
             if (fs.existsSync(LOGO_PATH)) {
-                await conn.sendMessage(from, {
-                    image: fs.readFileSync(LOGO_PATH),
-                    caption: format(`*${BOTNAME} ${VERSION}*\nCréé par ${OWNER}\n24/24 Online\n${SIGNATURE}`)
-                }, { quoted: mek })
+                await conn.sendMessage(from, { image: fs.readFileSync(LOGO_PATH), caption: format(`*${BOTNAME} ${VERSION}*\nCréé par ${OWNER}\n24/24 Online\n${SIGNATURE}`) }, { quoted: mek })
             } else {
                 reply(`*${BOTNAME} ${VERSION}*\nCréé par ${OWNER}\n${SIGNATURE}`)
             }
